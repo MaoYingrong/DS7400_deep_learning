@@ -1,6 +1,7 @@
 /** Left column: search box, filters, and the discipline legend (which is also a filter). */
 export default function Sidebar({
   graph, colorMap, query, setQuery, results, onSelect, filters, setFilters, journals, years, shown,
+  annotations, tagCounts, backendOnline,
 }) {
   const set = (patch) => setFilters({ ...filters, ...patch })
 
@@ -18,6 +19,7 @@ export default function Sidebar({
     set({ hidden })
   }
   const isOn = (names) => names.some((d) => !filters.hidden.has(d))
+  const annotated = graph.nodes.filter((n) => annotations[n.doi])
 
   return (
     <aside className="sidebar">
@@ -69,6 +71,33 @@ export default function Sidebar({
           <input type="checkbox" checked={filters.showAllEdges} onChange={(e) => set({ showAllEdges: e.target.checked })} />
           Show all citation links
         </label>
+      </section>
+
+      <section>
+        <h2>My annotations <span className="muted">({annotated.length})</span></h2>
+        {backendOnline === false && <p className="muted">Backend offline: annotations unavailable.</p>}
+        <label className="field">Show
+          <select value={filters.tag} onChange={(e) => set({ tag: e.target.value })}>
+            <option value="all">All papers</option>
+            <option value="annotated">Annotated papers only ({annotated.length})</option>
+            {Object.entries(tagCounts).sort().map(([t, c]) => <option key={t} value={t}>Tagged “{t}” ({c})</option>)}
+          </select>
+        </label>
+        {annotated.length > 0 && (
+          <>
+            <ul className="paper-list">
+              {annotated.slice(0, 50).map((n) => (
+                <li key={n.id}>
+                  <button onClick={() => onSelect(n.id, true)}>
+                    <span className="r-title">★ {n.title}</span>
+                    <span className="r-meta">{annotations[n.doi].tags.join(', ') || 'note only'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <a className="export" href="/api/annotations/export.csv">Export annotations (CSV)</a>
+          </>
+        )}
       </section>
 
       <section>

@@ -1,0 +1,12 @@
+# Runs the backend API (FastAPI + SQLite) on http://localhost:8000. The database lives in a named volume.
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - aps-data:/data
+volumes:
+  aps-data:

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AnnotationEditor from './AnnotationEditor'
 
 function PaperList({ title, ids, nodes, onSelect }) {
   const sorted = [...ids].sort((a, b) => nodes[b].cited - nodes[a].cited)
@@ -22,7 +23,7 @@ function PaperList({ title, ids, nodes, onSelect }) {
 }
 
 /** Right column: everything we know about the selected paper, with clickable neighbours. */
-export default function DetailPanel({ graph, node, colorMap, onSelect }) {
+export default function DetailPanel({ graph, node, colorMap, onSelect, annotation, onSaveAnnotation, backendOnline }) {
   const [allAuthors, setAllAuthors] = useState(false)
   if (!node) {
     return (
@@ -56,6 +57,8 @@ export default function DetailPanel({ graph, node, colorMap, onSelect }) {
         <dt>Cited by</dt><dd>{node.cited} APS papers (2016–2022)</dd>
         <dt>Discipline</dt><dd><i className="swatch" style={{ background: colorMap[node.discipline] }} />{node.disciplines.join('; ')}</dd>
       </dl>
+
+      <AnnotationEditor doi={node.doi} saved={annotation} onSave={onSaveAnnotation} backendOnline={backendOnline} />
 
       {node.concepts.length > 0 && (
         <section>

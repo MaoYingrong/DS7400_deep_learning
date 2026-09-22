@@ -151,11 +151,7 @@ Field prediction is the intended first step. Training can use a larger subset of
 continues to display a manageable sample. Evaluation should use held-out labels or edges and compare against simple
 baselines. The existing UMAP map is a dimensionality-reduction visualization, not an implemented deep-learning model.
 
-## HW1 submission
 
-Submit the GitHub repository link and a demo video of **at most three minutes** through Canvas. The video should show
-the graph data, application, and main interactions. To demonstrate the optional annotation and backend work, show a
-paper's hidden status, reload persistence, and restoration, explaining that the underlying paper remains stored.
 
 ## Notes
 

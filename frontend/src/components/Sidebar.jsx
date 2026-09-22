@@ -1,7 +1,7 @@
 /** Left column: search box, filters, and the discipline legend (which is also a filter). */
 export default function Sidebar({
   graph, colorMap, query, setQuery, results, onSelect, filters, setFilters, journals, years, shown,
-  annotations, tagCounts, backendOnline,
+  hiddenNodes, onRestore, onRestoreAll,
 }) {
   const set = (patch) => setFilters({ ...filters, ...patch })
 
@@ -13,13 +13,12 @@ export default function Sidebar({
   const otherCount = others.reduce((s, d) => s + counts[d], 0)
 
   const toggle = (names) => {
-    const hidden = new Set(filters.hidden)
-    const allHidden = names.every((d) => hidden.has(d))
-    names.forEach((d) => (allHidden ? hidden.delete(d) : hidden.add(d)))
-    set({ hidden })
+    const off = new Set(filters.hiddenDisciplines)
+    const allOff = names.every((d) => off.has(d))
+    names.forEach((d) => (allOff ? off.delete(d) : off.add(d)))
+    set({ hiddenDisciplines: off })
   }
-  const isOn = (names) => names.some((d) => !filters.hidden.has(d))
-  const annotated = graph.nodes.filter((n) => annotations[n.doi])
+  const isOn = (names) => names.some((d) => !filters.hiddenDisciplines.has(d))
 
   return (
     <aside className="sidebar">
@@ -74,28 +73,20 @@ export default function Sidebar({
       </section>
 
       <section>
-        <h2>My annotations <span className="muted">({annotated.length})</span></h2>
-        {backendOnline === false && <p className="muted">Backend offline: annotations unavailable.</p>}
-        <label className="field">Show
-          <select value={filters.tag} onChange={(e) => set({ tag: e.target.value })}>
-            <option value="all">All papers</option>
-            <option value="annotated">Annotated papers only ({annotated.length})</option>
-            {Object.entries(tagCounts).sort().map(([t, c]) => <option key={t} value={t}>Tagged “{t}” ({c})</option>)}
-          </select>
-        </label>
-        {annotated.length > 0 && (
+        <h2>Hidden papers <span className="muted">({hiddenNodes.length})</span></h2>
+        {hiddenNodes.length === 0 ? (
+          <p className="muted small">Select a paper and click “Hide this paper” to remove it from the map. It will be listed here so you can restore it.</p>
+        ) : (
           <>
             <ul className="paper-list">
-              {annotated.slice(0, 50).map((n) => (
-                <li key={n.id}>
-                  <button onClick={() => onSelect(n.id, true)}>
-                    <span className="r-title">★ {n.title}</span>
-                    <span className="r-meta">{annotations[n.doi].tags.join(', ') || 'note only'}</span>
-                  </button>
+              {hiddenNodes.map((n) => (
+                <li key={n.id} className="hidden-row">
+                  <span className="r-title">{n.title}</span>
+                  <button onClick={() => onRestore(n.doi)}>Restore</button>
                 </li>
               ))}
             </ul>
-            <a className="export" href="/api/annotations/export.csv">Export annotations (CSV)</a>
+            <button className="link restore-all" onClick={onRestoreAll}>Restore all</button>
           </>
         )}
       </section>

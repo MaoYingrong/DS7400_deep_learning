@@ -1,19 +1,15 @@
 // Thin wrappers around the backend's REST API (backend/app/main.py).
 const path = (doi) => doi.split('/').map(encodeURIComponent).join('/') // DOIs contain "/"
 
-async function json(res) {
+async function check(res) {
   if (!res.ok) throw new Error(`Backend error (HTTP ${res.status})`)
-  return res.status === 204 ? null : res.json()
+  return res
 }
 
-/** All saved annotations -> { [doi]: { tags: [...], note: '...' } } */
-export async function fetchAnnotations() {
-  const list = await fetch('/api/annotations').then(json)
-  return Object.fromEntries(list.map((a) => [a.doi, { tags: a.tags, note: a.note }]))
-}
+/** DOIs of every hidden paper. */
+export const fetchHidden = () =>
+  fetch('/api/hidden').then(check).then((r) => r.json()).then((rows) => rows.map((row) => row.doi))
 
-/** Create/replace a paper's annotation. No tags and no note deletes it. */
-export const putAnnotation = (doi, { tags, note }) =>
-  fetch(`/api/annotations/${path(doi)}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tags, note }),
-  }).then(json)
+export const hidePaperApi = (doi) => fetch(`/api/hidden/${path(doi)}`, { method: 'PUT' }).then(check)
+export const restorePaperApi = (doi) => fetch(`/api/hidden/${path(doi)}`, { method: 'DELETE' }).then(check)
+export const restoreAllApi = () => fetch('/api/hidden', { method: 'DELETE' }).then(check)

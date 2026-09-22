@@ -73,25 +73,28 @@ summary { cursor: pointer; color: var(--text-2); }
   .sidebar, .detail { border: 0; overflow: visible; }
 }
 
-/* ---- annotations & backend status ---- */
+/* ---- hiding papers & backend status ---- */
 .backend-pill { margin-left: auto; font-size: 12px; color: var(--text-2); }
 .backend-pill::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #b9b7ae; }
 .backend-pill.on::before { background: #1a8f4c; }
 .backend-pill.off::before { background: #c9302c; }
 .backend-pill.off { color: #b3261e; }
-.annotation { margin-top: 16px; padding: 10px 12px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fbf8ee; }
-.annotation h3 { margin-top: 0; display: flex; justify-content: space-between; align-items: baseline; }
-.save-status { font-size: 12px; font-weight: 400; color: #1a8f4c; }
-.save-status.err { color: #b3261e; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { padding: 3px 10px; border: 1px solid var(--border); border-radius: 14px; background: #fff; font-size: 12.5px; }
-.chip:hover { border-color: #b9a25a; }
-.chip.on { background: #0b0b0b; border-color: #0b0b0b; color: #fff; }
-.add-tag { display: flex; gap: 6px; margin: 8px 0; }
-.add-tag input, .annotation textarea { flex: 1; width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
-.add-tag button { padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
-.add-tag button:disabled { opacity: .5; cursor: default; }
-.annotation textarea { resize: vertical; }
-.export { display: inline-block; margin-top: 8px; font-size: 12.5px; }
-.sidebar .paper-list { max-height: 180px; }
+.small { font-size: 12px; }
+.hide-box { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: #f4f3ef; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.hide-btn { padding: 6px 12px; border: 1px solid #b3261e; border-radius: 6px; background: #fff; color: #b3261e; font-weight: 600; }
+.hide-btn:hover:not(:disabled) { background: #fdeceb; }
+.hide-btn:disabled { opacity: .45; cursor: default; }
+.hidden-row { display: flex; align-items: center; gap: 8px; padding: 6px 9px; }
+.hidden-row .r-title { flex: 1; font-size: 12.5px; }
+.paper-list .hidden-row button { flex: none; display: inline-block; width: auto; text-align: center; padding: 2px 9px; border: 1px solid var(--border); border-radius: 6px; background: #fff; font-size: 12px; }
+.restore-all { margin-top: 6px; }
+.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 12px; max-width: min(560px, 92vw); padding: 9px 14px; border-radius: 8px; background: #1a1a19; color: #fff; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast button { border: 0; background: none; color: #86b6ef; font-weight: 600; padding: 0; }
+.toast .toast-x { color: #c3c2b7; font-size: 18px; line-height: 1; }
 code { font-size: 12px; background: #eceae4; padding: 0 4px; border-radius: 3px; }
+
+/* ---- hover tooltip (positioned by GraphMap.jsx) ---- */
+.map-tooltip { position: absolute; top: 0; left: 0; z-index: 3; max-width: 340px; padding: 8px 10px; border-radius: 6px; background: #1a1a19; color: #fff; font-size: 12px; line-height: 1.4; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+.map-tooltip b { display: block; margin-bottom: 2px; font-size: 12.5px; }
+.map-tooltip .tip-disc { color: #c3c2b7; }

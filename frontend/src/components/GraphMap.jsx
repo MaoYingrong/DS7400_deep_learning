@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DeckGL, OrthographicView, LinearInterpolator, ScatterplotLayer, LineLayer, TextLayer } from 'deck.gl'
+import { DeckGL, OrthographicView, LinearInterpolator, ScatterplotLayer, LineLayer } from 'deck.gl'
 import { hexToRgb, CITES_COLOR, CITED_BY_COLOR } from '../colors'
 
 const VIEW = new OrthographicView({ id: 'map', flipY: false })
@@ -17,11 +17,25 @@ function fitView(nodes, width, height) {
  * The map: one dot per paper, positioned by the UMAP layout from the pipeline.
  * Pan = drag, zoom = scroll. Click a dot to select it; its citations are drawn as lines.
  */
-export default function GraphMap({ graph, visible, colorMap, selectedId, focus, showAllEdges, annotatedIds, onSelect }) {
+export default function GraphMap({ graph, visible, colorMap, selectedId, focus, showAllEdges, onSelect }) {
   const wrapRef = useRef(null)
   const [viewState, setViewState] = useState({ target: [0, 0, 0], zoom: 1.5, minZoom: -1, maxZoom: 8 })
   const [hoverId, setHoverId] = useState(null)
+  const tipRef = useRef(null)
   const { nodes, edges, cites, citedBy } = graph
+
+  // Keep the tooltip next to the mouse (moved directly in the DOM so hovering doesn't re-render the map),
+  // flipping it to the other side of the cursor near the right / bottom edge.
+  const moveTip = (e) => {
+    const tip = tipRef.current
+    if (!tip) return
+    const r = wrapRef.current.getBoundingClientRect()
+    const mx = e.clientX - r.left, my = e.clientY - r.top
+    const w = tip.offsetWidth || 340, h = tip.offsetHeight || 110
+    const x = mx + 14 + w > r.width ? mx - w - 14 : mx + 14
+    const y = my + 14 + h > r.height ? my - h - 14 : my + 14
+    tip.style.transform = `translate(${Math.max(0, x)}px, ${Math.max(0, y)}px)`
+  }
 
   const resetView = () => {
     const r = wrapRef.current.getBoundingClientRect()
@@ -47,6 +61,7 @@ export default function GraphMap({ graph, visible, colorMap, selectedId, focus, 
     }))
   }, [focus, nodes])
 
+  const hoverNode = hoverId != null && visible[hoverId] ? nodes[hoverId] : null
   const visibleNodes = useMemo(() => nodes.filter((n) => visible[n.id]), [nodes, visible])
 
   // The selected paper's neighbours (papers it cites + papers citing it) among the visible ones.
@@ -91,12 +106,6 @@ export default function GraphMap({ graph, visible, colorMap, selectedId, focus, 
       updateTriggers: { getFillColor: [selectedId, related, rgb] },
       onHover: (info) => setHoverId(info.object ? info.object.id : null),
     }),
-    new TextLayer({ // ★ marker above every annotated paper
-      id: 'stars', data: annotatedIds.filter((i) => visible[i]).map((i) => nodes[i]), pickable: false,
-      characterSet: ['★'], getText: () => '★', getPosition: (n) => [n.x, n.y],
-      getPixelOffset: (n) => [0, -(radius(n) + 11)], getSize: 26, sizeUnits: 'pixels',
-      getColor: [11, 11, 11, 255], fontSettings: { sdf: true }, outlineWidth: 4, outlineColor: [255, 255, 255, 255],
-    }),
     new ScatterplotLayer({
       id: 'rings', data: [selectedId, hoverId].filter((i) => i != null && visible[i]).map((i) => nodes[i]),
       radiusUnits: 'pixels', stroked: true, filled: false, lineWidthUnits: 'pixels',
@@ -106,20 +115,24 @@ export default function GraphMap({ graph, visible, colorMap, selectedId, focus, 
   ]
 
   return (
-    <div className="map" ref={wrapRef}>
+    <div className="map" ref={wrapRef} onMouseMove={moveTip}>
       <DeckGL
         views={VIEW} viewState={viewState} controller
         onViewStateChange={({ viewState: v }) => setViewState(v)}
         layers={layers}
         onClick={(info) => onSelect(info.object ? info.object.id : null)}
         getCursor={({ isHovering }) => (isHovering ? 'pointer' : 'grab')}
-        getTooltip={({ object: n }) =>
-          n && {
-            text: `${n.title}\n${n.authors.slice(0, 3).map((a) => a.name).join(', ')}${n.authors.length > 3 ? ' et al.' : ''}\n${n.abbr} ${n.year} · cited ${n.cited}×\n${n.discipline}`,
-            style: { maxWidth: '340px', fontSize: '12px', lineHeight: '1.4', padding: '8px 10px', borderRadius: '6px', background: '#1a1a19', color: '#fff' },
-          }
-        }
       />
+      <div className="map-tooltip" ref={tipRef} style={{ display: hoverNode ? 'block' : 'none' }}>
+        {hoverNode && (
+          <>
+            <b>{hoverNode.title}</b>
+            <div>{hoverNode.authors.slice(0, 3).map((a) => a.name).join(', ')}{hoverNode.authors.length > 3 ? ' et al.' : ''}</div>
+            <div>{hoverNode.abbr} {hoverNode.year} · cited {hoverNode.cited}×</div>
+            <div className="tip-disc">{hoverNode.discipline}</div>
+          </>
+        )}
+      </div>
       <button className="map-reset" onClick={resetView}>Reset view</button>
       {selectedId != null && (
         <div className="map-key">

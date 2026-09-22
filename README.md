@@ -31,7 +31,7 @@ npm install
 npm run dev        # then open the printed URL, normally http://localhost:5173
 ```
 
-The header shows **Backend connected** once the two are talking. Without the backend the viewer still works, but annotations are disabled.
+The header shows **Backend connected** once the two are talking. Without the backend the viewer still works, but hiding papers is disabled.
 Instead of `pip`/`uvicorn`, the backend can also run in Docker: `docker compose up --build` (not tested on the author's machine, where Docker isn't installed).
 
 ## Features
@@ -45,11 +45,11 @@ Instead of `pip`/`uvicorn`, the backend can also run in Docker: `docker compose 
 - **Search** by title words, author name or DOI; picking a result flies to that paper.
 - **Filters** – journal, year range, minimum citations, and per-discipline toggles (the legend doubles as the filter).
   Optionally draw all 20K citation links.
-- **Interactive annotation** – select a paper and use the *My annotation* box in the detail panel:
-  click preset tags (Important, To read, Relevant to my research, Method, Question), add your own tags, and write a free-text note.
-  It saves automatically. Annotated papers get a **★ marker on the map**, are listed under *My annotations* in the sidebar, and can
-  be filtered by tag ("Annotated only" / "Tagged …"). *Export annotations (CSV)* downloads them (DOI, title, tags, note).
-- **Backend / database** – a FastAPI + SQLite service stores annotations so they persist across reloads and restarts.
+- **Interactive annotation: hide papers you don't want to see** – select a paper and click **Hide this paper** in the detail panel.
+  It disappears from the map (with its citation lines), from search, and from the References / Cited by lists. A toast offers **Undo**,
+  and everything you've hidden is listed under **Hidden papers** in the sidebar with **Restore** / **Restore all** buttons.
+  It is a user-curated mark on individual nodes, stored in the database, so it persists across reloads and restarts.
+- **Backend / database** – a FastAPI + SQLite service stores which papers are hidden (plus the sample's paper metadata).
 
 ## Major libraries and frameworks
 
@@ -62,7 +62,6 @@ frontend/src/App.jsx                 state: selection, filters, search
 frontend/src/components/GraphMap.jsx the deck.gl map
 frontend/src/components/Sidebar.jsx  search, filters, legend
 frontend/src/components/DetailPanel.jsx  selected-paper details
-frontend/src/components/AnnotationEditor.jsx  tags + note editor
 frontend/src/data.js                 loads graph.json, builds cites / cited-by lookups
 frontend/src/api.js                  calls to the backend API
 backend/app/main.py                  FastAPI app + SQLite schema
@@ -86,22 +85,22 @@ structure), keeps the citations among sampled papers, and lays the papers out wi
 
 ## Annotation and backend
 
-- Interactive annotation: **implemented** (tags + notes with ★ markers on the map).
+- Interactive annotation: **implemented** – hide / restore individual papers (persisted in the database).
 - Backend / database: **implemented** (FastAPI + SQLite).
 
 ### Backend API
 
 | Method & path | Purpose |
 |---|---|
-| `GET /api/stats` | paper / annotation counts and tag counts |
-| `GET /api/annotations` | all saved annotations |
-| `PUT /api/annotations/{doi}` | create or replace `{tags, note}` for a paper (empty tags and note delete it) |
-| `DELETE /api/annotations/{doi}` | remove an annotation |
-| `GET /api/annotations/export.csv` | download annotations joined with paper metadata |
+| `GET /api/stats` | number of papers and of hidden papers |
+| `GET /api/hidden` | DOIs of all hidden papers |
+| `PUT /api/hidden/{doi}` | hide a paper (safe to repeat) |
+| `DELETE /api/hidden/{doi}` | restore one paper |
+| `DELETE /api/hidden` | restore all papers |
 
-SQLite tables: `papers` (metadata for the 2,000 sampled papers, seeded from `graph.json` at startup), `annotations` (note per
-paper) and `annotation_tags` (tags per paper). Annotations are keyed by DOI, so they stay valid if the sample is rebuilt. The
-database file `backend/data/aps.db` is git-ignored. Interactive API docs are at http://localhost:8000/docs while the backend runs.
+SQLite tables: `papers` (metadata for the 2,000 sampled papers, seeded from `graph.json` at startup) and `hidden_papers`
+(DOI + time hidden). Hidden papers are keyed by DOI, so they stay valid if the sample is rebuilt. The database file
+`backend/data/aps.db` is git-ignored. Interactive API docs are at http://localhost:8000/docs while the backend runs.
 
 ## Notes
 

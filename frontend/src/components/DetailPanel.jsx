@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import AnnotationEditor from './AnnotationEditor'
 
-function PaperList({ title, ids, nodes, onSelect }) {
-  const sorted = [...ids].sort((a, b) => nodes[b].cited - nodes[a].cited)
+function PaperList({ title, ids, nodes, hiddenDois, onSelect }) {
+  const shown = ids.filter((i) => !hiddenDois.has(nodes[i].doi)) // hidden papers stay out of the lists too
+  const sorted = shown.sort((a, b) => nodes[b].cited - nodes[a].cited)
+  const nHidden = ids.length - shown.length
   return (
     <section>
-      <h3>{title} <span className="muted">({ids.length} in sample)</span></h3>
+      <h3>{title} <span className="muted">({shown.length} in sample{nHidden ? ` · ${nHidden} hidden` : ''})</span></h3>
       {sorted.length === 0 ? <p className="muted">None in this sample.</p> : (
         <ul className="paper-list">
           {sorted.map((i) => (
@@ -23,7 +24,7 @@ function PaperList({ title, ids, nodes, onSelect }) {
 }
 
 /** Right column: everything we know about the selected paper, with clickable neighbours. */
-export default function DetailPanel({ graph, node, colorMap, onSelect, annotation, onSaveAnnotation, backendOnline }) {
+export default function DetailPanel({ graph, node, colorMap, onSelect, hiddenDois, onHide, backendOnline }) {
   const [allAuthors, setAllAuthors] = useState(false)
   if (!node) {
     return (
@@ -58,7 +59,12 @@ export default function DetailPanel({ graph, node, colorMap, onSelect, annotatio
         <dt>Discipline</dt><dd><i className="swatch" style={{ background: colorMap[node.discipline] }} />{node.disciplines.join('; ')}</dd>
       </dl>
 
-      <AnnotationEditor doi={node.doi} saved={annotation} onSave={onSaveAnnotation} backendOnline={backendOnline} />
+      <div className="hide-box">
+        <button className="hide-btn" disabled={!backendOnline} onClick={() => onHide(node.id)}>Hide this paper</button>
+        <span className="muted small">
+          {backendOnline ? 'Removes it from the map and lists. Restore it any time from “Hidden papers”.' : 'Needs the backend to remember hidden papers (see README).'}
+        </span>
+      </div>
 
       {node.concepts.length > 0 && (
         <section>
@@ -79,8 +85,8 @@ export default function DetailPanel({ graph, node, colorMap, onSelect, annotatio
         </details>
       )}
 
-      <PaperList title="References" ids={graph.cites[node.id]} nodes={graph.nodes} onSelect={onSelect} />
-      <PaperList title="Cited by" ids={graph.citedBy[node.id]} nodes={graph.nodes} onSelect={onSelect} />
+      <PaperList title="References" ids={graph.cites[node.id]} nodes={graph.nodes} hiddenDois={hiddenDois} onSelect={onSelect} />
+      <PaperList title="Cited by" ids={graph.citedBy[node.id]} nodes={graph.nodes} hiddenDois={hiddenDois} onSelect={onSelect} />
     </aside>
   )
 }

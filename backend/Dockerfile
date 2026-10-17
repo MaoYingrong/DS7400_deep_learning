@@ -3,6 +3,8 @@ WORKDIR /srv
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./backend/app
+COPY backend/model ./backend/model
+COPY training ./training
 COPY frontend/public/data/graph.json ./graph.json
 ENV GRAPH_JSON=/srv/graph.json DB_PATH=/data/aps.db
 EXPOSE 8000

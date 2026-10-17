@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
+
+from .ml import MLService
 
 ROOT = Path(__file__).resolve().parents[2]
 GRAPH_JSON = Path(os.environ.get("GRAPH_JSON", ROOT / "frontend" / "public" / "data" / "graph.json"))
@@ -63,6 +66,7 @@ async def lifespan(app):
     with closing(connect()) as conn:
         conn.executescript(SCHEMA)
         seed_papers(conn)
+    app.state.ml = MLService()  # loads the trained network + builds features (a few seconds)
     yield
 
 
@@ -116,3 +120,66 @@ def restore_all(db: sqlite3.Connection = Depends(get_db)):
     """Un-hide every paper."""
     db.execute("DELETE FROM hidden_papers")
     db.commit()
+
+
+# ---- neural network: field (discipline) prediction --------------------------------------------------------------
+
+
+class TrainRequest(BaseModel):
+    lr: float | None = None
+    epochs: int | None = None
+    hidden: int | None = None
+    n_layers: int | None = None
+    activation: str | None = None
+    dropout: float | None = None
+    optimizer: str | None = None
+
+
+@app.get("/api/model")
+def model_info():
+    """Active model: hyper-parameters, train/val/test metrics, shallow baselines, loss history."""
+    return app.state.ml.info()
+
+
+@app.get("/api/predict/{doi:path}")
+def predict(doi: str):
+    """Predicted research field (with class probabilities) for one paper."""
+    result = app.state.ml.predict(doi)
+    if result is None:
+        raise HTTPException(404, f"Unknown paper: {doi}")
+    return result
+
+
+@app.get("/api/predictions")
+def predictions():
+    """Compact predictions for every paper (used to color the map by predicted field / correctness)."""
+    return app.state.ml.all_predictions()
+
+
+@app.post("/api/train", status_code=202)
+def train(req: TrainRequest):
+    try:
+        return {"started": True, "hparams": app.state.ml.start_training(req.model_dump(exclude_none=True))}
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.get("/api/train/status")
+def train_status():
+    return app.state.ml.status()
+
+
+@app.post("/api/train/stop", status_code=204)
+def train_stop():
+    app.state.ml.stop_training()
+
+
+@app.post("/api/model/reset")
+def model_reset():
+    """Go back to the shipped, pre-trained weights."""
+    if app.state.ml.status()["running"]:
+        raise HTTPException(409, "training is running")
+    app.state.ml.load_pretrained()
+    return app.state.ml.info()

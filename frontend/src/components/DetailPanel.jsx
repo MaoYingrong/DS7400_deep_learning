@@ -1,4 +1,36 @@
 import { useState } from 'react'
+import { fetchPrediction } from '../api'
+
+/** Ask the backend's neural network for this paper's field; show probabilities next to the recorded label. */
+function PredictBox({ doi, backendOnline, modelVersion }) {
+  const [res, setRes] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const [forVersion, setForVersion] = useState(modelVersion)
+  const run = () => {
+    setBusy(true); setErr(null)
+    fetchPrediction(doi).then((r) => { setRes(r); setForVersion(modelVersion) }).catch((e) => setErr(e.message)).finally(() => setBusy(false))
+  }
+  return (
+    <section className="predict-box">
+      <h3>Neural-network prediction</h3>
+      <button className="primary" disabled={!backendOnline || busy} onClick={run}>{busy ? 'Predicting…' : res ? 'Predict again' : 'Predict field'}</button>
+      {!backendOnline && <span className="muted small"> Needs the backend.</span>}
+      {err && <p className="small" style={{ color: '#b3261e' }}>{err}</p>}
+      {res && (
+        <div>
+          {forVersion !== modelVersion && <p className="small muted">The model changed since this prediction — predict again.</p>}
+          <p className="pred-main">Predicted: <b>{res.predicted}</b> ({(res.confidence * 100).toFixed(0)}%)<br />
+            <span className={res.correct ? 'ok' : 'bad'}>{res.correct ? '✓ matches' : '✗ differs from'} the recorded field ({res.true})</span><br />
+            <span className="muted small">This paper was in the model's <b>{res.split}</b> set{res.split === 'train' ? ' (seen during training)' : ' (unseen during training)'}.</span></p>
+          {res.top.map((t) => (
+            <div className="bar-row" key={t.label}><span className="bar-label">{t.label}</span><span className="bar"><i style={{ width: `${t.prob * 100}%` }} /></span><span className="bar-pct">{(t.prob * 100).toFixed(0)}%</span></div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
 
 function PaperList({ title, ids, nodes, hiddenDois, onSelect }) {
   const shown = ids.filter((i) => !hiddenDois.has(nodes[i].doi)) // hidden papers stay out of the lists too
@@ -24,7 +56,7 @@ function PaperList({ title, ids, nodes, hiddenDois, onSelect }) {
 }
 
 /** Right column: everything we know about the selected paper, with clickable neighbours. */
-export default function DetailPanel({ graph, node, colorMap, onSelect, hiddenDois, onHide, backendOnline }) {
+export default function DetailPanel({ graph, node, colorMap, onSelect, hiddenDois, onHide, backendOnline, modelVersion }) {
   const [allAuthors, setAllAuthors] = useState(false)
   if (!node) {
     return (
@@ -65,6 +97,8 @@ export default function DetailPanel({ graph, node, colorMap, onSelect, hiddenDoi
           {backendOnline ? 'Removes it from the map and lists. Restore it any time from “Hidden papers”.' : 'Needs the backend to remember hidden papers (see README).'}
         </span>
       </div>
+
+      <PredictBox doi={node.doi} backendOnline={backendOnline} modelVersion={modelVersion} />
 
       {node.concepts.length > 0 && (
         <section>

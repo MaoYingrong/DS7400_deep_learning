@@ -17,7 +17,7 @@ function fitView(nodes, width, height) {
  * The map: one dot per paper, positioned by the UMAP layout from the pipeline.
  * Pan = drag, zoom = scroll. Click a dot to select it; its citations are drawn as lines.
  */
-export default function GraphMap({ graph, visible, colorMap, selectedId, focus, showAllEdges, onSelect }) {
+export default function GraphMap({ graph, visible, colorMap, selectedId, focus, showAllEdges, onSelect, preds, colorMode, setColorMode, backendOnline }) {
   const wrapRef = useRef(null)
   const [viewState, setViewState] = useState({ target: [0, 0, 0], zoom: 1.5, minZoom: -1, maxZoom: 8 })
   const [hoverId, setHoverId] = useState(null)
@@ -101,9 +101,10 @@ export default function GraphMap({ graph, visible, colorMap, selectedId, focus, 
       getPosition: (n) => [n.x, n.y], getRadius: radius,
       getFillColor: (n) => {
         const dim = related && n.id !== selectedId && !related.has(n.id)
-        return [...rgb[n.discipline], dim ? 40 : 220]
+        const base = preds ? (preds.pred[n.id] === preds.true[n.id] ? [26, 143, 76] : [201, 48, 44]) : rgb[n.discipline]
+        return [...base, dim ? 40 : preds && preds.split[n.id] === 'train' ? 90 : 220]
       },
-      updateTriggers: { getFillColor: [selectedId, related, rgb] },
+      updateTriggers: { getFillColor: [selectedId, related, rgb, preds] },
       onHover: (info) => setHoverId(info.object ? info.object.id : null),
     }),
     new ScatterplotLayer({
@@ -133,6 +134,15 @@ export default function GraphMap({ graph, visible, colorMap, selectedId, focus, 
           </>
         )}
       </div>
+      {backendOnline && (
+        <label className="map-mode">Color by{' '}
+          <select value={colorMode} onChange={(e) => setColorMode(e.target.value)}>
+            <option value="discipline">discipline</option>
+            <option value="correct">prediction correct?</option>
+          </select>
+        </label>
+      )}
+      {preds && <div className="map-key" style={{ left: 'auto', right: 10 }}><span><i style={{ background: '#1a8f4c' }} /> correct</span><span><i style={{ background: '#c9302c' }} /> wrong</span><span className="muted">faded = training paper</span></div>}
       <button className="map-reset" onClick={resetView}>Reset view</button>
       {selectedId != null && (
         <div className="map-key">

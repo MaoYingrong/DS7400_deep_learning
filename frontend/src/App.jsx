@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { loadGraph } from './data'
-import { fetchHidden, hidePaperApi, restorePaperApi, restoreAllApi } from './api'
+import { fetchPredictions, fetchHidden, hidePaperApi, restorePaperApi, restoreAllApi } from './api'
 import { buildColorMap } from './colors'
 import GraphMap from './components/GraphMap'
 import Sidebar from './components/Sidebar'
 import DetailPanel from './components/DetailPanel'
+import ModelPanel from './components/ModelPanel'
 
 const DEFAULT_FILTERS = { journal: 'all', yearFrom: 2016, yearTo: 2022, minCited: 0, hiddenDisciplines: new Set(), showAllEdges: false }
 
@@ -17,6 +18,10 @@ export default function App() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [hiddenDois, setHiddenDois] = useState(new Set()) // papers the user hid; mirrored from the backend database
   const [backendOnline, setBackendOnline] = useState(null) // null = still checking
+  const [showModel, setShowModel] = useState(false)
+  const [modelVersion, setModelVersion] = useState(0) // bumped whenever the active model changes
+  const [colorMode, setColorMode] = useState('discipline') // 'discipline' | 'correct'
+  const [preds, setPreds] = useState(null)
   const [toast, setToast] = useState(null) // {message, undoDoi?} shown briefly at the bottom
 
   useEffect(() => {
@@ -25,6 +30,11 @@ export default function App() {
       .then((dois) => { setHiddenDois(new Set(dois)); setBackendOnline(true) })
       .catch(() => setBackendOnline(false))
   }, [])
+
+  useEffect(() => {
+    if (colorMode !== 'correct' || !backendOnline) return
+    fetchPredictions().then(setPreds).catch(() => setColorMode('discipline'))
+  }, [colorMode, backendOnline, modelVersion])
 
   useEffect(() => {
     if (!toast) return
@@ -106,6 +116,7 @@ export default function App() {
         <span className="muted">
           {graph.nodes.length.toLocaleString()} sampled Physical Review papers (2016–2022) · {graph.edges.length.toLocaleString()} citation links
         </span>
+        <button className="primary" disabled={backendOnline !== true} onClick={() => setShowModel(true)}>Neural network</button>
         <span className={`backend-pill ${backendOnline === false ? 'off' : backendOnline ? 'on' : ''}`}>
           {backendOnline === null ? 'Checking backend…' : backendOnline ? `Backend connected · ${hiddenDois.size} hidden` : 'Backend offline'}
         </span>
@@ -119,12 +130,14 @@ export default function App() {
         <GraphMap
           graph={graph} visible={visible} colorMap={colorMap} selectedId={selectedId}
           focus={focus} showAllEdges={filters.showAllEdges} onSelect={select}
+          preds={colorMode === 'correct' ? preds : null} colorMode={colorMode} setColorMode={setColorMode} backendOnline={backendOnline === true}
         />
         <DetailPanel
-          key={selectedId} graph={graph} node={selectedId == null ? null : graph.nodes[selectedId]}
+          key={`${selectedId}`} modelVersion={modelVersion} graph={graph} node={selectedId == null ? null : graph.nodes[selectedId]}
           colorMap={colorMap} onSelect={select} hiddenDois={hiddenDois} onHide={hidePaper} backendOnline={backendOnline === true}
         />
       </main>
+      {showModel && <ModelPanel onClose={() => setShowModel(false)} onModelChange={() => setModelVersion((v) => v + 1)} />}
       {toast && (
         <div className="toast" role="status">
           <span>{toast.message}</span>

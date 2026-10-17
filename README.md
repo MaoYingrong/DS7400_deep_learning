@@ -1,7 +1,8 @@
 # APS Citation Explorer
 
-DS7400 Deep Learning – Homework 1: a web-based data viewer that will become the home for deep-learning models in later homeworks.
-The current application supports data exploration and persistent hide/restore choices; deep-learning models are not yet implemented.
+DS7400 Deep Learning – Homework 1 (viewer) and **Homework 2 (the app now learns and predicts)**.
+The application supports data exploration, persistent hide/restore annotation, and a neural network that predicts each paper's
+research field (node classification) from within the web UI.
 
 ## What it is
 
@@ -64,7 +65,7 @@ Instead of `pip`/`uvicorn`, the backend can also run in Docker: `docker compose 
 
 ## Major libraries and frameworks
 
-React 19, Vite 6, [deck.gl](https://deck.gl) 9 (WebGL rendering). Backend: FastAPI, SQLite (Docker optional). Data pipeline: Python, pandas, SciPy, scikit-learn, UMAP.
+React 19, Vite 6, [deck.gl](https://deck.gl) 9 (WebGL rendering). Backend: FastAPI, SQLite (Docker optional). Neural network: PyTorch, scikit-learn. Data pipeline: Python, pandas, SciPy, scikit-learn, UMAP.
 
 ## Project layout
 
@@ -75,7 +76,10 @@ frontend/src/components/Sidebar.jsx  search, filters, legend
 frontend/src/components/DetailPanel.jsx  selected-paper details
 frontend/src/data.js                 loads graph.json, builds cites / cited-by lookups
 frontend/src/api.js                  calls to the backend API
-backend/app/main.py                  FastAPI app + SQLite schema
+backend/app/main.py                  FastAPI app + SQLite schema + API routes
+backend/app/ml.py                    loads the model, predicts, trains in a background thread
+backend/model/                       trained weights (model.pt), metrics.json, loss_curve.png
+training/data.py, model.py, train.py features + split, the MLP, the training loop
 backend/Dockerfile, docker-compose.yml   optional Docker setup for the backend
 frontend/public/data/graph.json      the sample dataset (generated)
 pipeline/build_data.py               builds graph.json from the raw APS files
@@ -137,21 +141,70 @@ sqlite3 backend/data/aps.db "SELECT p.doi, p.title FROM papers p JOIN hidden_pap
 
 The Docker setup stores its database in the `aps-data` volume instead of this local path.
 
-## Planned deep-learning extensions
+## HW2: neural-network field prediction
 
-HW1 establishes the viewer; the following are proposed extensions for later assignments, not current features.
+**Task – node classification.** Predict each paper's PhySH **discipline** (top-level research field). The 8 largest disciplines are
+their own class; the 11 small ones are merged into "Other" → 9 classes. Labels are the primary `discipline` of each paper.
 
-| Task | Possible model and training data | Viewer integration |
-|---|---|---|
-| Research-field prediction (node classification) | A graph neural network using citation connections and title features to predict existing PhySH discipline labels. Target discipline labels would be excluded from input features. | Show predicted fields and confidence alongside recorded fields. |
-| Related-paper recommendations | A neural encoder that learns paper embeddings from titles and citation neighborhoods. | Add a ranked “Related papers” panel, including papers without a direct citation link. |
-| Citation link prediction | A graph neural network with a pairwise decoder, evaluated on held-out citation edges and non-edge pairs. | Show suggested citation connections separately from observed links. |
+**Inputs (no label leakage).** Title TF-IDF (1,500 terms, vocabulary fit on training papers only) + journal one-hot +
+the mean title TF-IDF of the paper's citation neighbours (one round of message passing over the undirected citation graph).
+Discipline, PhySH concepts and the UMAP coordinates are *not* used. The journal is a strong but legitimate metadata signal.
 
-Field prediction is the intended first step. Training can use a larger subset of the raw APS data while the viewer
-continues to display a manageable sample. Evaluation should use held-out labels or edges and compare against simple
-baselines. The existing UMAP map is a dimensionality-reduction visualization, not an implemented deep-learning model.
+**Model.** A small MLP (`training/model.py`): 2,512 inputs → 64 hidden units → ReLU → dropout 0.3 → 9 logits. Cross-entropy loss, Adam,
+mini-batches of 64, weight decay 1e-3, 40 epochs; the weights from the epoch with the lowest validation loss are kept.
+`training/train.py` makes every step explicit: forward pass → loss → `loss.backward()` (backpropagation) → `opt.step()` (gradient update).
+Stratified split (seed 0): 1,400 train / 300 validation / 300 test papers.
 
+**Results (test set, 300 held-out papers)** – `backend/model/metrics.json`, loss curve `backend/model/loss_curve.png`:
 
+| Model | Test error | Test accuracy | Macro-F1 |
+|---|---|---|---|
+| Majority class | 62.3% | 37.7% | 0.061 |
+| Shallow benchmark: logistic regression (same features, no hidden layer) | 26.7% | 73.3% | 0.581 |
+| **MLP (this work)** | **23.0%** | **77.0%** | **0.610** |
+
+The MLP beats the shallow benchmark, but only by ~4 points on 300 test papers, so the gap is small and noisy. Training accuracy (~93%) is much
+higher than validation (~75%): with 1,400 papers and ~160K parameters the network overfits, which dropout / weight decay / best-epoch selection only partly
+control. Small classes ("Other", General Physics) are the weak spot (macro-F1 ≪ accuracy). Hyper-parameter sweeps (dropout, weight decay, width, learning rate) all landed
+around 75–77%, so the data size, not tuning, is the limit.
+
+### Using it in the app
+
+1. **Predict field** – select a paper, click **Predict field** in the detail panel. The request goes React → `GET /api/predict/{doi}` → FastAPI → PyTorch model →
+   the panel shows the predicted field, confidence, top-5 probabilities, whether it matches the recorded field, and whether the paper was in train/val/test.
+2. **Color by "prediction correct?"** (map, top-left) – green = right, red = wrong, training papers faded.
+3. **Neural network** button (header) – opens the **training monitor** (live train/val/test loss and accuracy curves, metrics table, comparison with the baselines)
+   and **interactive training**: change learning rate, epochs, hidden units, hidden layers, dropout, activation and optimizer, press **Train**, and watch the curves
+   update epoch by epoch (polls `GET /api/train/status`). The newly trained model becomes the active one for predictions in that session; **Reset to pre-trained** restores the shipped weights.
+   (Retrained models are never written to `model.pt`.)
+
+### Retrain from the command line
+
+```bash
+python -m pip install -r backend/requirements.txt
+python training/train.py        # writes backend/model/model.pt, metrics.json, loss_curve.png
+```
+
+### Extra API endpoints
+
+| Method & path | Purpose |
+|---|---|
+| `GET /api/model` | active model's hyper-parameters, metrics, baselines, loss history |
+| `GET /api/predict/{doi}` | predicted field + probabilities for one paper |
+| `GET /api/predictions` | predicted/true class and split for every paper |
+| `POST /api/train` | start training in the background with the given hyper-parameters |
+| `GET /api/train/status` · `POST /api/train/stop` | live progress · stop early |
+| `POST /api/model/reset` | restore the shipped weights |
+
+### AI-use disclosure
+
+Claude Code (Anthropic) wrote most of the first implementation of the training code, the backend endpoints and the React components under the author's direction;
+the PyTorch MLP follows the standard pattern (nn.Sequential of Linear/activation/dropout layers + Adam + cross-entropy). The author is responsible for understanding and
+being able to explain the model, the features and the training loop. The logistic-regression baselines use scikit-learn.
+
+### Other optional extensions (not yet implemented)
+
+Related-paper recommendations (learned embeddings) and citation link prediction. A graph neural network would be the natural next model for field prediction.
 
 ## Notes
 

@@ -1,6 +1,7 @@
 # APS Citation Explorer
 
-DS7400 Deep Learning – Homework 1 (viewer) and **Homework 2 (the app now learns and predicts)**.
+DS7400 Deep Learning – Homework 1 (viewer), **Homework 2 (the app now learns and predicts)** and
+**Homework 3 (a design experiment on the HW2 network – [jump to the HW3 section](#hw3-break-the-network--a-weight-tied-two-branch-encoder-with-a-learned-neighbour-gate))**.
 The application supports data exploration, persistent hide/restore annotation, and a neural network that predicts each paper's
 research field (node classification) from within the web UI.
 
@@ -80,6 +81,9 @@ backend/app/main.py                  FastAPI app + SQLite schema + API routes
 backend/app/ml.py                    loads the model, predicts, trains in a background thread
 backend/model/                       trained weights (model.pt), metrics.json, loss_curve.png
 training/data.py, model.py, train.py features + split, the MLP, the training loop
+training/hw3_model.py, hw3_experiments.py, hw3_analyze.py, hw3_config.json   HW3 design, experiments, analysis
+results/hw3/                         HW3 results (JSON, summary table, figures)
+docs/HW3_report.pdf                  HW3 experiment summary
 backend/Dockerfile, docker-compose.yml   optional Docker setup for the backend
 frontend/public/data/graph.json      the sample dataset (generated)
 pipeline/build_data.py               builds graph.json from the raw APS files
@@ -205,6 +209,77 @@ being able to explain the model, the features and the training loop. The logisti
 ### Other optional extensions (not yet implemented)
 
 Related-paper recommendations (learned embeddings) and citation link prediction. A graph neural network would be the natural next model for field prediction.
+
+## HW3: break the network – a weight-tied two-branch encoder with a learned neighbour gate
+
+Full write-up: [`docs/HW3_report.pdf`](docs/HW3_report.pdf). Code: `training/hw3_model.py`, `training/hw3_experiments.py`,
+`training/hw3_analyze.py`, settings in `training/hw3_config.json`, outputs in `results/hw3/`.
+
+**Task and dataset (unchanged from HW2).** Node classification on the 2,000-paper APS citation sample: predict each paper's PhySH
+discipline (9 classes) from its title TF-IDF (1,248 terms), the mean title TF-IDF of its citation neighbours (1,248) and its journal (16).
+Same stratified split (1,400 / 300 / 300, seed 0), cross-entropy loss, Adam (lr 1e-3, weight decay 1e-3), batch 64, 40 epochs,
+weights from the best-validation-loss epoch. Metrics: test accuracy and macro-F1.
+
+**Baseline (HW2).** One flat vector → `Linear(2512, 64)` → ReLU → Dropout 0.3 → `Linear(64, 9)`; 161,417 parameters.
+
+![Baseline and HW3 architecture](results/hw3/architecture.png)
+
+**Problem.** The HW2 model overfits (93% train vs 75% validation accuracy) and 99.6% of its parameters sit in the first layer. That layer learns
+two unrelated weight matrices for "own title" and "neighbour titles" even though both are TF-IDF vectors over the *same* vocabulary,
+and it has no way to decide, per paper, how much to trust the neighbours.
+
+**Proposed modification.** (1) *Weight tying:* both text inputs go through the same encoder `E`, which halves the parameter count.
+(2) *Learned gate:* the neighbour branch is added to the own-title branch like a residual correction, scaled by a per-paper gate
+`g = sigmoid(a·[h_self, h_nbr] + c)`: `h = ReLU(E(x_self) + g · E(x_nbr) + W_j x_journal)`.
+
+**Hypothesis (written before running).** Tying should reduce overfitting and raise test accuracy, because the word "superconductivity"
+means the same thing in a paper's own title and in its neighbours' titles. The gate should learn to close for papers whose neighbours are
+uninformative (few or mixed-field neighbours). It might fail if the two inputs actually need different weights (a mean over many titles
+is not distributed like one title), or if the gate saturates and becomes a constant.
+
+### Running the experiments
+
+```bash
+python -m pip install -r backend/requirements.txt
+python training/hw3_experiments.py                                   # 6 variants x 10 seeds, ~1.5 min on CPU
+python training/hw3_experiments.py --epochs 80 --only baseline,tied_gated,tied_add --tag ep80   # training-budget check
+python training/hw3_analyze.py                                       # writes results/hw3/summary.md, curves.png, gates.png
+```
+
+### Main results (40 epochs, mean ± std over 10 seeds; accuracy in %)
+
+| Variant | Params | Train acc | Val acc | Test acc | Test macro-F1 | Train−val gap | Test diff vs baseline (paired, ± s.e.) |
+|---|---|---|---|---|---|---|---|
+| HW2 baseline (untied, fixed add) | 161,417 | 92.7 | 74.7 ± 0.6 | 77.2 ± 0.3 | 0.613 | 18.0 | – |
+| **Tied + per-paper gate (my design)** | 81,674 | 89.9 | 76.4 ± 0.5 | 76.3 ± 0.7 | 0.610 | 13.5 | −0.9 ± 0.3 |
+| Ablation: tied, fixed add (no gate) | 81,545 | 89.6 | 76.2 ± 0.5 | 76.3 ± 0.7 | 0.606 | 13.4 | −0.9 ± 0.2 |
+| Ablation: untied + per-paper gate | 161,610 | 92.0 | 74.2 ± 0.6 | 76.6 ± 0.6 | 0.606 | 17.7 | −0.6 ± 0.2 |
+| Ablation: tied + one global gate | 81,546 | 90.5 | 75.1 ± 0.8 | 75.4 ± 0.9 | 0.594 | 15.4 | −1.8 ± 0.3 |
+| Ablation: tied, neighbour branch removed | 81,545 | 90.4 | 73.7 ± 0.5 | 72.1 ± 0.6 | 0.556 | 16.7 | −5.1 ± 0.2 |
+
+![Training curves](results/hw3/curves.png)
+![Gate diagnostics](results/hw3/gates.png)
+
+### What happened and what I learned
+
+- **Weight tying did what I hoped to the overfitting gap, but not to test accuracy.** With half the parameters the train−validation gap fell from
+  18.0 to 13.5 points and validation accuracy rose by 1.7 points, but test accuracy fell by 0.9 points (about 3 of 300 papers). Validation and
+  test disagree on the sign, so the honest reading is "same accuracy with half the parameters", not an improvement.
+- **The gate was a failure, in the way I listed as a risk.** It opened to g ≈ 0.97 for every paper within about 10 epochs (std across papers 0.011),
+  with no relation to the number of neighbours (correlation −0.02). The gated model is therefore the fixed-addition model: identical test accuracy (76.3).
+- **Why the gate saturated.** Neighbours are the most valuable input (removing them costs 5 points), so the loss always pushes the gate open,
+  and a sigmoid gate can only *shrink* the branch. It had nothing useful to do.
+- **The global-gate ablation was worst for an optimisation reason, not a modelling one.** Its single parameter starts at g = 0.5 and Adam moves it
+  at most about lr = 0.001 per step, so after 880 steps it had only reached 0.68 and the model was still under-using neighbours.
+- **Training longer did not change the picture** (80 epochs: baseline 77.2, tied + gate 76.4, tied 76.5), so the fixed budget is not the explanation.
+- **Cost.** Half the parameters, but training was slightly slower (1.35 s vs 1.07 s per run) because of two encoder passes and the gate.
+- **Next experiment.** Repeat over several train/val/test splits, since split noise is larger than the effects here; give the gate the neighbour count
+  as an input and let it exceed 1; and test the hint that papers with more than 30 neighbours do better *without* the neighbour branch (80.9% vs 78.4%, n = 58).
+
+### AI-use disclosure (HW3)
+
+Claude (Anthropic) listed candidate limitations and design ideas, implemented the model and experiment scripts, generated the plots and helped
+draft this write-up. The author chose the design (weight-tied branches with a learned gate), and is responsible for the hypothesis and conclusions.
 
 ## Notes
 

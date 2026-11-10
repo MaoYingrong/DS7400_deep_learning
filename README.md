@@ -220,13 +220,13 @@ discipline (9 classes) from its title TF-IDF (1,248 terms), the mean title TF-ID
 Same stratified split (1,400 / 300 / 300, seed 0), cross-entropy loss, Adam (lr 1e-3, weight decay 1e-3), batch 64, 40 epochs,
 weights from the best-validation-loss epoch. Metrics: test accuracy and macro-F1.
 
-**Baseline (HW2).** One flat vector → `Linear(2512, 64)` → ReLU → Dropout 0.3 → `Linear(64, 9)`; 161,417 parameters.
-
-![Baseline and HW3 architecture](results/hw3/architecture.png)
-
 **Problem.** The HW2 model overfits (93% train vs 75% validation accuracy) and 99.6% of its parameters sit in the first layer. That layer learns
 two unrelated weight matrices for "own title" and "neighbour titles" even though both are TF-IDF vectors over the *same* vocabulary,
 and it has no way to decide, per paper, how much to trust the neighbours.
+
+**Baseline (HW2).** One flat vector → `Linear(2512, 64)` → ReLU → Dropout 0.3 → `Linear(64, 9)`; 161,417 parameters.
+
+![Baseline and HW3 architecture](results/hw3/architecture.png)
 
 **Proposed modification.** (1) *Weight tying:* both text inputs go through the same encoder `E`, which halves the parameter count.
 (2) *Learned gate:* the neighbour branch is added to the own-title branch like a residual correction, scaled by a per-paper gate

@@ -278,8 +278,7 @@ python training/hw3_analyze.py                                       # writes re
 
 ### AI-use disclosure (HW3)
 
-Claude (Anthropic) listed candidate limitations and design ideas, implemented the model and experiment scripts, generated the plots and helped
-draft this write-up. The author chose the design (weight-tied branches with a learned gate), and is responsible for the hypothesis and conclusions.
+Claude helped implement the model and experiment scripts, generated the plots and helped draft this write-up. 
 
 ## Notes
 
